@@ -56,7 +56,7 @@ class InputHandle:
         self.current_output_length = max(self.data['clips'][1, ind, 1] for ind
                                          in self.current_batch_indices)
 
-    def next(self):
+    def __next__(self):
         self.current_position += self.current_batch_size
         if self.no_batch_left():
             return None
