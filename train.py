@@ -21,6 +21,7 @@ parser.add_argument("run_dir", help="path to specific run. Must contain subdir d
 parser.add_argument("--lr", type=float, default=0.001)
 parser.add_argument("--int_test", type=int, help="interval of test", default=100)
 parser.add_argument("--int_save", type=int, help="interval of checkpoint", default=5000)
+parser.add_argument("--i_predict", help="starting position for prediction. Can give multiple like 0,100. -1=disable", default='-1')
 options = parser.parse_args()
 
 # -----------------------------------------------------------------------------
@@ -154,6 +155,22 @@ class Model(object):
         print('saved to ' + FLAGS.save_dir)
 
 
+def write_prediction_pics(test_ims, img_gen, seq_len, input_len, isample, path):
+    for i in range(seq_len):
+        name = 'gt' + str(i+1) + '.png'
+        file_name = os.path.join(path, name)
+        img_gt = np.uint8(test_ims[isample,i,:,:,:] * 255)
+        cv2.imwrite(file_name, img_gt)
+    for i in range(seq_len-input_len):
+        name = 'pd' + str(i+1+input_len) + '.png'
+        file_name = os.path.join(path, name)
+        img_pd = img_gen[isample,i,:,:,:]
+        img_pd = np.maximum(img_pd, 0)
+        img_pd = np.minimum(img_pd, 1)
+        img_pd = np.uint8(img_pd * 255)
+        cv2.imwrite(file_name, img_pd)
+
+
 def main(argv=None):
 #    if tf.gfile.Exists(FLAGS.save_dir):
 #        tf.gfile.DeleteRecursively(FLAGS.save_dir)
@@ -174,6 +191,30 @@ def main(argv=None):
     delta = 0.00002
     base = 0.99998
     eta = 1
+
+    if options.i_predict != '-1':
+        mask_true = np.zeros((FLAGS.batch_size,
+                                  FLAGS.seq_length-FLAGS.input_length-1,
+                                  FLAGS.img_width//FLAGS.patch_size,
+                                  FLAGS.img_width//FLAGS.patch_size,
+                                  FLAGS.patch_size**2*FLAGS.img_channel))
+        for i_begin in map(int, options.i_predict.split(',')):
+            test_input_handle.begin(do_shuffle = False, new_position=i_begin-1)
+            res_path = os.path.join(FLAGS.gen_frm_dir, "pred_%d"%(i_begin))
+            os.mkdir(res_path)
+            test_ims = test_input_handle.get_batch()
+            test_dat = preprocess.reshape_patch(test_ims, FLAGS.patch_size)
+            img_gen = model.test(test_dat, mask_true)
+
+            # concat outputs of different gpus along batch
+            img_gen = np.concatenate(img_gen)
+            img_gen = preprocess.reshape_patch_back(img_gen, FLAGS.patch_size)
+            for isample in range(len(img_gen)):
+                path = os.path.join(res_path, str(isample))
+                os.mkdir(path)
+                write_prediction_pics(test_ims, img_gen, FLAGS.seq_length, FLAGS.input_length, isample, path) 
+        print("Done prediction")
+        quit()
 
     for itr in range(1, FLAGS.max_iterations + 1):
         if train_input_handle.no_batch_left():
@@ -272,19 +313,7 @@ def main(argv=None):
                     path = os.path.join(res_path, str(batch_id))
                     os.mkdir(path)
                     isample= (batch_id // test_export_interval) // len(test_ims)
-                    for i in range(FLAGS.seq_length):
-                        name = 'gt' + str(i+1) + '.png'
-                        file_name = os.path.join(path, name)
-                        img_gt = np.uint8(test_ims[isample,i,:,:,:] * 255)
-                        cv2.imwrite(file_name, img_gt)
-                    for i in range(FLAGS.seq_length-FLAGS.input_length):
-                        name = 'pd' + str(i+1+FLAGS.input_length) + '.png'
-                        file_name = os.path.join(path, name)
-                        img_pd = img_gen[isample,i,:,:,:]
-                        img_pd = np.maximum(img_pd, 0)
-                        img_pd = np.minimum(img_pd, 1)
-                        img_pd = np.uint8(img_pd * 255)
-                        cv2.imwrite(file_name, img_pd)
+                    write_prediction_pics(test_ims, img_gen, FLAGS.seq_length, FLAGS.input_length, isample, path)
                 next(test_input_handle)
             avg_mse = avg_mse / (batch_id*FLAGS.batch_size)
             print('mse per seq: ' + str(avg_mse))

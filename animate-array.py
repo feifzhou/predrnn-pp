@@ -30,7 +30,7 @@ def animate(i):
 
 # call the animator. blit=True means only re-draw the parts that have changed.
 anim = animation.FuncAnimation(fig, animate, init_func=init,
-                               frames=100, interval=20, blit=False)
+                               frames=len(data), interval=20, blit=False)
 
 plt.show()
 #HTML(anim.to_html5_video())

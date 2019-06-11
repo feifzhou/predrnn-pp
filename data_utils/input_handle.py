@@ -40,11 +40,11 @@ class InputHandle:
     def total(self):
         return self.data['clips'].shape[1]
 
-    def begin(self, do_shuffle = True):
+    def begin(self, do_shuffle = True, new_position=0):
         self.indices = np.arange(self.total(),dtype="int32")
         if do_shuffle:
             random.shuffle(self.indices)
-        self.current_position = 0
+        self.current_position = new_position
         if self.current_position + self.minibatch_size <= self.total():
             self.current_batch_size = self.minibatch_size
         else:
