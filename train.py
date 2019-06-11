@@ -19,7 +19,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("run_dir", help="path to specific run. Must contain subdir data/ with train.npz and valid.npz")
 parser.add_argument("--lr", type=float, default=0.001)
-parser.add_argument("--int_test", type=int, help="interval of test", default=10)
+parser.add_argument("--int_test", type=int, help="interval of test", default=100)
 parser.add_argument("--int_save", type=int, help="interval of checkpoint", default=5000)
 options = parser.parse_args()
 
@@ -42,7 +42,7 @@ tf.app.flags.DEFINE_string('gen_frm_dir', options.run_dir+'/results',
 # model
 tf.app.flags.DEFINE_string('model_name', 'predrnn_pp',
                            'The name of the architecture.')
-tf.app.flags.DEFINE_string('pretrained_model', '',
+tf.app.flags.DEFINE_string('pretrained_model', options.run_dir+'/checkpoints',
                            'file of a pretrained model to initialize from.')
 tf.app.flags.DEFINE_integer('input_length', 10,
                             'encoder hidden states.')
@@ -73,9 +73,9 @@ tf.app.flags.DEFINE_integer('max_iterations', 80000,
                             'max num of steps.')
 tf.app.flags.DEFINE_integer('display_interval', 1,
                             'number of iters showing training loss.')
-tf.app.flags.DEFINE_integer('test_interval', 100,
+tf.app.flags.DEFINE_integer('test_interval', options.int_test,
                             'number of iters for test.')
-tf.app.flags.DEFINE_integer('snapshot_interval', 1000,
+tf.app.flags.DEFINE_integer('snapshot_interval', options.int_save,
                             'number of iters saving models.')
 
 class Model(object):
@@ -132,7 +132,8 @@ class Model(object):
         self.sess = tf.Session(config = configProt)
         self.sess.run(init)
         if FLAGS.pretrained_model:
-            self.saver.restore(self.sess, FLAGS.pretrained_model)
+            self.saver.restore(self.sess, tf.train.latest_checkpoint(FLAGS.pretrained_model))
+            print("Model restored from", FLAGS.pretrained_model)
 
     def train(self, inputs, lr, mask_true):
         feed_dict = {self.x: inputs}
@@ -152,17 +153,11 @@ class Model(object):
         self.saver.save(self.sess, checkpoint_path, global_step=itr)
         print('saved to ' + FLAGS.save_dir)
 
-    def load(self):
-        try:
-            self.saver.restore(self.sess, os.path.join(FLAGS.save_dir, 'model.ckpt'))
-            print('loaded from ' + FLAGS.save_dir)
-        except:
-            pass
 
 def main(argv=None):
-    if tf.gfile.Exists(FLAGS.save_dir):
-        tf.gfile.DeleteRecursively(FLAGS.save_dir)
-    tf.gfile.MakeDirs(FLAGS.save_dir)
+#    if tf.gfile.Exists(FLAGS.save_dir):
+#        tf.gfile.DeleteRecursively(FLAGS.save_dir)
+#    tf.gfile.MakeDirs(FLAGS.save_dir)
     if tf.gfile.Exists(FLAGS.gen_frm_dir):
         tf.gfile.DeleteRecursively(FLAGS.gen_frm_dir)
     tf.gfile.MakeDirs(FLAGS.gen_frm_dir)
@@ -174,7 +169,6 @@ def main(argv=None):
 
     print('Initializing models')
     model = Model()
-    model.load()
     lr = FLAGS.lr
 
     delta = 0.00002
@@ -277,15 +271,16 @@ def main(argv=None):
                 if batch_id%(test_export_interval) == 1: # batch_id <= 10:
                     path = os.path.join(res_path, str(batch_id))
                     os.mkdir(path)
+                    isample= (batch_id // test_export_interval) // len(test_ims)
                     for i in range(FLAGS.seq_length):
                         name = 'gt' + str(i+1) + '.png'
                         file_name = os.path.join(path, name)
-                        img_gt = np.uint8(test_ims[0,i,:,:,:] * 255)
+                        img_gt = np.uint8(test_ims[isample,i,:,:,:] * 255)
                         cv2.imwrite(file_name, img_gt)
                     for i in range(FLAGS.seq_length-FLAGS.input_length):
                         name = 'pd' + str(i+1+FLAGS.input_length) + '.png'
                         file_name = os.path.join(path, name)
-                        img_pd = img_gen[0,i,:,:,:]
+                        img_pd = img_gen[isample,i,:,:,:]
                         img_pd = np.maximum(img_pd, 0)
                         img_pd = np.minimum(img_pd, 1)
                         img_pd = np.uint8(img_pd * 255)
