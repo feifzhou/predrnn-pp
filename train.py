@@ -10,26 +10,34 @@ import cv2
 import sys
 import random
 from nets import models_factory
-from data_provider import datasets_factory
+from data_utils import datasets_factory
 from utils import preprocess
 from utils import metrics
 from skimage.measure import compare_ssim
+
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("run_dir", help="path to specific run. Must contain subdir data/ with train.npz and valid.npz")
+parser.add_argument("--lr", type=float, default=0.001)
+parser.add_argument("--int_test", type=int, help="interval of test", default=10)
+parser.add_argument("--int_save", type=int, help="interval of checkpoint", default=5000)
+options = parser.parse_args()
 
 # -----------------------------------------------------------------------------
 FLAGS = tf.app.flags.FLAGS
 
 # data I/O
-tf.app.flags.DEFINE_string('dataset_name', 'mnist',
+tf.app.flags.DEFINE_string('dataset_name', os.path.basename(options.run_dir),
                            'The name of dataset.')
 tf.app.flags.DEFINE_string('train_data_paths',
-                           'data/moving-mnist-example/moving-mnist-train.npz',
+                           options.run_dir+'/data/train.npz',
                            'train data paths.')
 tf.app.flags.DEFINE_string('valid_data_paths',
-                           'data/moving-mnist-example/moving-mnist-valid.npz',
+                           options.run_dir+'/data/valid.npz',
                            'validation data paths.')
-tf.app.flags.DEFINE_string('save_dir', 'checkpoints/mnist_predrnn_pp',
+tf.app.flags.DEFINE_string('save_dir', options.run_dir+'/checkpoints',
                             'dir to store trained net.')
-tf.app.flags.DEFINE_string('gen_frm_dir', 'results/mnist_predrnn_pp',
+tf.app.flags.DEFINE_string('gen_frm_dir', options.run_dir+'/results',
                            'dir to store result.')
 # model
 tf.app.flags.DEFINE_string('model_name', 'predrnn_pp',
@@ -55,9 +63,9 @@ tf.app.flags.DEFINE_integer('patch_size', 4,
 tf.app.flags.DEFINE_boolean('layer_norm', True,
                             'whether to apply tensor layer norm.')
 # optimization
-tf.app.flags.DEFINE_float('lr', 0.001,
+tf.app.flags.DEFINE_float('lr', options.lr,
                           'base learning rate.')
-tf.app.flags.DEFINE_boolean('reverse_input', True,
+tf.app.flags.DEFINE_boolean('reverse_input', False,
                             'whether to reverse the input frames while training.')
 tf.app.flags.DEFINE_integer('batch_size', 8,
                             'batch size for training.')
@@ -65,9 +73,9 @@ tf.app.flags.DEFINE_integer('max_iterations', 80000,
                             'max num of steps.')
 tf.app.flags.DEFINE_integer('display_interval', 1,
                             'number of iters showing training loss.')
-tf.app.flags.DEFINE_integer('test_interval', 2000,
+tf.app.flags.DEFINE_integer('test_interval', 100,
                             'number of iters for test.')
-tf.app.flags.DEFINE_integer('snapshot_interval', 10000,
+tf.app.flags.DEFINE_integer('snapshot_interval', 1000,
                             'number of iters saving models.')
 
 class Model(object):
@@ -144,6 +152,13 @@ class Model(object):
         self.saver.save(self.sess, checkpoint_path, global_step=itr)
         print('saved to ' + FLAGS.save_dir)
 
+    def load(self):
+        try:
+            self.saver.restore(self.sess, os.path.join(FLAGS.save_dir, 'model.ckpt'))
+            print('loaded from ' + FLAGS.save_dir)
+        except:
+            pass
+
 def main(argv=None):
     if tf.gfile.Exists(FLAGS.save_dir):
         tf.gfile.DeleteRecursively(FLAGS.save_dir)
@@ -159,6 +174,7 @@ def main(argv=None):
 
     print('Initializing models')
     model = Model()
+    model.load()
     lr = FLAGS.lr
 
     delta = 0.00002
@@ -257,7 +273,8 @@ def main(argv=None):
                         ssim[i] += score
 
                 # save prediction examples
-                if batch_id <= 10:
+                test_export_interval=test_input_handle.total()//(11*FLAGS.batch_size)
+                if batch_id%(test_export_interval) == 1: # batch_id <= 10:
                     path = os.path.join(res_path, str(batch_id))
                     os.mkdir(path)
                     for i in range(FLAGS.seq_length):
