@@ -1,9 +1,11 @@
-from IPython.display import HTML
+#!/bin/env python
+#from IPython.display import HTML
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import sys
 
-data = np.load('tmp.npy')
+data = np.load(sys.argv[1])
 data=data.reshape((-1,)+data.shape[-2:])
 
 fig, ax = plt.subplots()
@@ -30,7 +32,7 @@ def animate(i):
 
 # call the animator. blit=True means only re-draw the parts that have changed.
 anim = animation.FuncAnimation(fig, animate, init_func=init,
-                               frames=len(data), interval=20, blit=False)
+                               frames=len(data), interval=20, blit=True)
 
 plt.show()
 #HTML(anim.to_html5_video())
