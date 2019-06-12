@@ -1,3 +1,4 @@
+#!/bin/env python
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -15,6 +16,7 @@ parser.add_argument("Ns", type=int, help="num. samples")
 parser.add_argument("Nt", type=int, help="Nt")
 parser.add_argument("Nx", type=int, help="Nx")
 parser.add_argument("Ny", type=int, help="Ny")
+parser.add_argument("--split", type=float, help="fraction to split into test set. split<=0: skip", default=0.2)
 options = parser.parse_args()
 
 def f(modes, Nt, Nx, Ny, sharpness=2.3):
@@ -97,8 +99,14 @@ else:
         alldat[i]=f(modes, Nt, Nx, Ny)[-1]
 
 alldat=alldat.reshape((-1,1, Nx, Ny))
-print("input_raw_data", alldat.shape)
+ntot=alldat.shape[0]
+ntest=int(ntot*options.split)
+print("all input_raw_data", alldat.shape)
 
-
-
-np.savez("data.npz", dims=dims, clips=clips, input_raw_data=alldat)
+if ntest<=0 or ntest>ntot:
+    np.savez("data.npz", dims=dims, clips=clips, input_raw_data=alldat)
+    print("all %d saved to data.npz"%(ntot))
+else:
+    np.savez("train.npz", dims=dims, clips=clips[:,:-ntest,:], input_raw_data=alldat[:-ntest])
+    np.savez("test.npz", dims=dims, clips=clips[:,0:ntest,:], input_raw_data=alldat[0:ntest])
+    print("saved %d to train.npz and %d to test.npz"%(ntot-ntest, ntest))
